@@ -61,8 +61,8 @@ const defaultCounters: Counter[] = [
     accent: "blue",
   },
   {
-    id: "zytkow-launch",
-    name: "Zytkow Launch",
+    id: "app-launch",
+    name: "App Launch",
     target: 10000,
     current: 4800,
     monthly: 2600,
