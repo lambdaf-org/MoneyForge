@@ -3,21 +3,78 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+type Accent = "blue" | "pink" | "green" | "amber";
+
 type Counter = {
   id: string;
   name: string;
   target: number;
   current: number;
   monthly: number;
+  accent: Accent;
 };
+
+const accents: Record<
+  Accent,
+  {
+    border: string;
+    text: string;
+    bar: string;
+    soft: string;
+  }
+> = {
+  blue: {
+    border: "border-blue-500/40",
+    text: "text-blue-300",
+    bar: "from-blue-400 to-emerald-400",
+    soft: "bg-blue-500/10 ring-blue-500/20 hover:bg-blue-500/20",
+  },
+  pink: {
+    border: "border-fuchsia-500/40",
+    text: "text-fuchsia-300",
+    bar: "from-violet-400 to-pink-400",
+    soft: "bg-fuchsia-500/10 ring-fuchsia-500/20 hover:bg-fuchsia-500/20",
+  },
+  green: {
+    border: "border-emerald-500/40",
+    text: "text-emerald-300",
+    bar: "from-emerald-400 to-teal-400",
+    soft: "bg-emerald-500/10 ring-emerald-500/20 hover:bg-emerald-500/20",
+  },
+  amber: {
+    border: "border-amber-500/40",
+    text: "text-amber-300",
+    bar: "from-amber-400 to-orange-400",
+    soft: "bg-amber-500/10 ring-amber-500/20 hover:bg-amber-500/20",
+  },
+};
+
+const accentCycle: Accent[] = ["blue", "pink", "green", "amber"];
 
 const defaultCounters: Counter[] = [
   {
-    id: "default-freedom-fund",
+    id: "freedom-fund",
     name: "Freedom Fund",
     target: 30000,
-    current: 0,
+    current: 12400,
     monthly: 3000,
+    accent: "blue",
+  },
+  {
+    id: "zytkow-launch",
+    name: "Zytkow Launch",
+    target: 10000,
+    current: 4800,
+    monthly: 2600,
+    accent: "pink",
+  },
+  {
+    id: "emergency-fund",
+    name: "Emergency Fund",
+    target: 8000,
+    current: 8000,
+    monthly: 1000,
+    accent: "green",
   },
 ];
 
@@ -26,7 +83,7 @@ export default function Home() {
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    const saved = localStorage.getItem("money-counters");
+    const saved = localStorage.getItem("money-counters-v3");
 
     if (saved) {
       setCounters(JSON.parse(saved));
@@ -37,7 +94,7 @@ export default function Home() {
 
   useEffect(() => {
     if (!loaded) return;
-    localStorage.setItem("money-counters", JSON.stringify(counters));
+    localStorage.setItem("money-counters-v3", JSON.stringify(counters));
   }, [counters, loaded]);
 
   function addCounter() {
@@ -47,9 +104,10 @@ export default function Home() {
       target: 1000,
       current: 0,
       monthly: 100,
+      accent: accentCycle[counters.length % accentCycle.length],
     };
 
-    setCounters((prev) => [...prev, newCounter]);
+    setCounters((prev) => [newCounter, ...prev]);
   }
 
   function updateCounter(id: string, updates: Partial<Counter>) {
@@ -64,34 +122,87 @@ export default function Home() {
     setCounters((prev) => prev.filter((counter) => counter.id !== id));
   }
 
+  const summary = useMemo(() => {
+    const saved = counters.reduce((sum, counter) => sum + counter.current, 0);
+    const target = counters.reduce((sum, counter) => sum + counter.target, 0);
+    const done = counters.filter(
+      (counter) => counter.target > 0 && counter.current >= counter.target
+    ).length;
+
+    const progress = target > 0 ? Math.min((saved / target) * 100, 100) : 0;
+
+    return {
+      saved,
+      target,
+      done,
+      goals: counters.length,
+      progress,
+    };
+  }, [counters]);
+
   return (
-    <main className="min-h-screen bg-black text-white p-5">
-      <section className="mx-auto w-full max-w-5xl py-10">
-        <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <p className="text-sm text-zinc-500">Money Counter</p>
-            <h1 className="text-4xl font-black tracking-tight">
-              Goal Dashboard
-            </h1>
+    <main className="min-h-screen bg-[#05060d] px-4 py-6 text-white sm:px-6 lg:px-8">
+      <section className="mx-auto max-w-7xl">
+        <div className="rounded-[2rem] border border-white/10 bg-[#101116] p-4 shadow-2xl sm:p-6 lg:p-8">
+          <header className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <p className="text-xs uppercase tracking-[0.35em] text-neutral-500">
+                My Counters
+              </p>
+              <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">
+                {counters.length} active goals
+              </h1>
+            </div>
+
+            <button
+              onClick={addCounter}
+              className="w-full rounded-2xl border border-emerald-400/20 bg-emerald-500/10 px-5 py-3 text-base font-medium text-emerald-300 transition hover:bg-emerald-500/20 sm:w-auto"
+            >
+              + New Counter
+            </button>
+          </header>
+
+          <div className="mb-6 rounded-3xl border border-white/10 bg-white/[0.03] p-4 sm:p-5">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs uppercase tracking-[0.25em] text-neutral-500">
+                  Total Progress
+                </p>
+                <p className="mt-1 text-xl font-semibold sm:text-2xl">
+                  CHF {formatNumber(summary.saved)} / CHF{" "}
+                  {formatNumber(summary.target)}
+                </p>
+              </div>
+
+              <p className="text-2xl font-semibold text-emerald-300 sm:text-3xl">
+                {Math.round(summary.progress)}%
+              </p>
+            </div>
+
+            <div className="h-3 overflow-hidden rounded-full bg-white/5">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-blue-400 via-fuchsia-400 to-emerald-400 transition-all"
+                style={{ width: `${summary.progress}%` }}
+              />
+            </div>
           </div>
 
-          <button
-            onClick={addCounter}
-            className="rounded-2xl bg-white px-5 py-3 font-bold text-black hover:bg-zinc-200"
-          >
-            + Add Counter
-          </button>
-        </div>
+          <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
+            {counters.map((counter) => (
+              <CounterCard
+                key={counter.id}
+                counter={counter}
+                onUpdate={updateCounter}
+                onDelete={deleteCounter}
+              />
+            ))}
+          </div>
 
-        <div className="grid gap-5 md:grid-cols-2">
-          {counters.map((counter) => (
-            <CounterCard
-              key={counter.id}
-              counter={counter}
-              onUpdate={updateCounter}
-              onDelete={deleteCounter}
-            />
-          ))}
+          <div className="mt-6 grid gap-3 sm:grid-cols-3">
+            <SummaryCard label="Saved" value={`CHF ${formatCompact(summary.saved)}`} />
+            <SummaryCard label="Goals" value={String(summary.goals)} />
+            <SummaryCard label="Done" value={String(summary.done)} />
+          </div>
         </div>
       </section>
     </main>
@@ -107,14 +218,21 @@ function CounterCard({
   onUpdate: (id: string, updates: Partial<Counter>) => void;
   onDelete: (id: string) => void;
 }) {
-  const progress = useMemo(() => {
-    if (counter.target <= 0) return 0;
-    return Math.min((counter.current / counter.target) * 100, 100);
-  }, [counter.current, counter.target]);
+  const [editing, setEditing] = useState(false);
+
+  const style = accents[counter.accent];
+
+  const progress =
+    counter.target > 0
+      ? Math.min((counter.current / counter.target) * 100, 100)
+      : 0;
 
   const remaining = Math.max(counter.target - counter.current, 0);
+
   const monthsLeft =
     counter.monthly > 0 ? Math.ceil(remaining / counter.monthly) : null;
+
+  const completed = counter.target > 0 && counter.current >= counter.target;
 
   function addMoney(amount: number) {
     onUpdate(counter.id, {
@@ -123,111 +241,123 @@ function CounterCard({
   }
 
   return (
-    <article className="rounded-3xl border border-white/10 bg-zinc-950 p-6 shadow-2xl">
-      <div className="mb-6 flex items-start justify-between gap-3">
+    <article
+      className={`rounded-[1.75rem] border ${style.border} bg-[#15161c] p-4 transition hover:-translate-y-0.5 hover:bg-[#181a21] sm:p-5`}
+    >
+      <div className="mb-4 flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <p className="text-sm text-zinc-500">Counter</p>
-          <input
-            value={counter.name}
-            onChange={(e) => onUpdate(counter.id, { name: e.target.value })}
-            className="mt-1 w-full bg-transparent text-2xl font-bold outline-none"
-          />
+          {editing ? (
+            <input
+              value={counter.name}
+              onChange={(e) => onUpdate(counter.id, { name: e.target.value })}
+              className="w-full bg-transparent text-xl font-semibold outline-none"
+              placeholder="Counter name"
+            />
+          ) : (
+            <h2 className="truncate text-xl font-semibold">{counter.name}</h2>
+          )}
+
+          <p className="mt-1 text-sm text-neutral-500 sm:text-base">
+            CHF {formatNumber(counter.current)} / CHF{" "}
+            {formatNumber(counter.target)}
+          </p>
         </div>
 
-        <button
-          onClick={() => onDelete(counter.id)}
-          className="rounded-xl bg-zinc-900 px-3 py-2 text-sm text-zinc-400 hover:bg-red-950 hover:text-red-200"
-        >
-          Delete
-        </button>
-      </div>
-
-      <div className="mb-6">
-        <div className="mb-2 flex justify-between text-sm text-zinc-400">
-          <span>CHF {counter.current.toLocaleString()}</span>
-          <span>CHF {counter.target.toLocaleString()}</span>
-        </div>
-
-        <div className="h-5 overflow-hidden rounded-full bg-zinc-800">
-          <div
-            className="h-full rounded-full bg-white transition-all"
-            style={{ width: `${progress}%` }}
-          />
-        </div>
-
-        <p className="mt-3 text-4xl font-black tracking-tight">
-          {progress.toFixed(1)}%
+        <p className={`text-xl font-semibold ${style.text}`}>
+          {Math.round(progress)}%
         </p>
       </div>
 
-      <div className="mb-5 grid grid-cols-2 gap-3">
-        <InfoCard label="Left" value={`CHF ${remaining.toLocaleString()}`} />
-        <InfoCard
-          label="ETA"
-          value={monthsLeft !== null ? `${monthsLeft} mo` : "—"}
+      <div className="mb-4 h-3 overflow-hidden rounded-full bg-white/5">
+        <div
+          className={`h-full rounded-full bg-gradient-to-r ${style.bar} transition-all`}
+          style={{ width: `${progress}%` }}
         />
       </div>
 
-      <div className="mb-5 grid grid-cols-3 gap-2">
-        <button
-          onClick={() => addMoney(100)}
-          className="rounded-xl bg-white px-3 py-3 text-sm font-bold text-black hover:bg-zinc-200"
-        >
-          +100
-        </button>
-
-        <button
-          onClick={() => addMoney(500)}
-          className="rounded-xl bg-white px-3 py-3 text-sm font-bold text-black hover:bg-zinc-200"
-        >
-          +500
-        </button>
-
-        <button
-          onClick={() => addMoney(1000)}
-          className="rounded-xl bg-white px-3 py-3 text-sm font-bold text-black hover:bg-zinc-200"
-        >
-          +1000
-        </button>
+      <div className="mb-4 flex items-center justify-between text-sm text-neutral-500">
+        <span>
+          {completed ? "Completed" : `Left: CHF ${formatNumber(remaining)}`}
+        </span>
+        <span>{completed ? "Ready" : `ETA: ${monthsLeft ?? "—"} mo`}</span>
       </div>
 
-      <div className="space-y-4">
-        <NumberInput
-          label="Current amount"
-          value={counter.current}
-          onChange={(value) =>
-            onUpdate(counter.id, { current: Number(value) })
-          }
+      <div className="mb-4 grid grid-cols-4 gap-2">
+        <QuickButton label="+100" onClick={() => addMoney(100)} className={style.soft} />
+        <QuickButton label="+500" onClick={() => addMoney(500)} className={style.soft} />
+        <QuickButton label="+1k" onClick={() => addMoney(1000)} className={style.soft} />
+        <QuickButton
+          label="-100"
+          onClick={() => addMoney(-100)}
+          className="bg-white/5 text-neutral-300 ring-white/10 hover:bg-white/10"
         />
+      </div>
 
-        <NumberInput
-          label="Goal amount"
-          value={counter.target}
-          onChange={(value) => onUpdate(counter.id, { target: Number(value) })}
-        />
+      {editing && (
+        <div className="mb-4 grid gap-2 sm:grid-cols-3">
+          <EditField
+            label="Current"
+            value={counter.current}
+            onChange={(value) =>
+              onUpdate(counter.id, { current: Number(value) || 0 })
+            }
+          />
+          <EditField
+            label="Goal"
+            value={counter.target}
+            onChange={(value) =>
+              onUpdate(counter.id, { target: Number(value) || 0 })
+            }
+          />
+          <EditField
+            label="Monthly"
+            value={counter.monthly}
+            onChange={(value) =>
+              onUpdate(counter.id, { monthly: Number(value) || 0 })
+            }
+          />
+        </div>
+      )}
 
-        <NumberInput
-          label="Monthly saving"
-          value={counter.monthly}
-          onChange={(value) =>
-            onUpdate(counter.id, { monthly: Number(value) })
-          }
-        />
+      <div className="flex gap-2">
+        <button
+          onClick={() => setEditing((prev) => !prev)}
+          className="flex-1 rounded-xl bg-white/5 px-3 py-2 text-sm font-medium text-neutral-200 ring-1 ring-white/10 transition hover:bg-white/10"
+        >
+          {editing ? "Done" : "Edit"}
+        </button>
+
+        <button
+          onClick={() => onDelete(counter.id)}
+          className="rounded-xl bg-red-500/10 px-3 py-2 text-sm font-medium text-red-300 ring-1 ring-red-500/20 transition hover:bg-red-500/20"
+        >
+          Delete
+        </button>
       </div>
     </article>
   );
 }
 
-function InfoCard({ label, value }: { label: string; value: string }) {
+function QuickButton({
+  label,
+  onClick,
+  className,
+}: {
+  label: string;
+  onClick: () => void;
+  className: string;
+}) {
   return (
-    <div className="rounded-2xl bg-zinc-900 p-4">
-      <p className="text-sm text-zinc-500">{label}</p>
-      <p className="mt-1 text-xl font-bold">{value}</p>
-    </div>
+    <button
+      onClick={onClick}
+      className={`rounded-xl px-2 py-2 text-sm font-medium ring-1 transition ${className}`}
+    >
+      {label}
+    </button>
   );
 }
 
-function NumberInput({
+function EditField({
   label,
   value,
   onChange,
@@ -237,14 +367,39 @@ function NumberInput({
   onChange: (value: string) => void;
 }) {
   return (
-    <label className="block">
-      <span className="text-sm text-zinc-500">{label}</span>
+    <label className="block rounded-xl bg-white/[0.03] p-3 ring-1 ring-white/10">
+      <span className="text-[10px] uppercase tracking-[0.25em] text-neutral-500">
+        {label}
+      </span>
       <input
         type="number"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="mt-1 w-full rounded-xl border border-white/10 bg-zinc-900 px-4 py-3 outline-none focus:border-white/40"
+        className="mt-2 w-full bg-transparent text-sm text-white outline-none"
       />
     </label>
   );
+}
+
+function SummaryCard({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-2xl border border-white/5 bg-white/[0.03] px-5 py-4 text-center">
+      <p className="text-xs uppercase tracking-[0.3em] text-neutral-500">
+        {label}
+      </p>
+      <p className="mt-2 text-2xl font-semibold">{value}</p>
+    </div>
+  );
+}
+
+function formatNumber(value: number) {
+  return new Intl.NumberFormat("de-CH").format(value);
+}
+
+function formatCompact(value: number) {
+  if (value >= 1000) {
+    return `${(value / 1000).toFixed(1)}k`;
+  }
+
+  return String(value);
 }
