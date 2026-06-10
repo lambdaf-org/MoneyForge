@@ -1,4 +1,3 @@
-/* eslint-disable react-hooks/set-state-in-effect */
 "use client";
 
 import { type FormEvent, useEffect, useMemo, useState } from "react";
@@ -27,6 +26,12 @@ type GoalDraft = {
   target: string;
   current: string;
   monthly: string;
+};
+
+type StoredCounters = {
+  canPersist: boolean;
+  counters: Counter[];
+  showExamplePrompt: boolean;
 };
 
 const STORAGE_KEY = "MoneyForges-v3";
@@ -78,30 +83,36 @@ export default function Home() {
   const [showResetConfirm, setShowResetConfirm] = useState(false);
 
   useEffect(() => {
-    const saved = window.localStorage.getItem(STORAGE_KEY);
+    function syncStoredCounters() {
+      const stored = readStoredCounters();
 
-    if (saved !== null) {
-      try {
-        const parsed = JSON.parse(saved);
-
-        if (Array.isArray(parsed)) {
-          const normalized = parsed.map(normalizeCounter).filter(isCounter);
-
-          if (matchesExampleCounters(normalized)) {
-            setCounters([]);
-            setShowExamplePrompt(true);
-          } else {
-            setCounters(normalized);
-            setCanPersist(true);
-          }
-        }
-      } catch {
-        setCounters([]);
-        setCanPersist(true);
-      }
-    } else {
-      setShowExamplePrompt(true);
+      setCounters(stored.counters);
+      setCanPersist(stored.canPersist);
+      setShowExamplePrompt(stored.showExamplePrompt);
     }
+
+    function handleStorage(event: StorageEvent) {
+      if (event.key !== STORAGE_KEY && event.key !== null) return;
+      syncStoredCounters();
+    }
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === "visible") {
+        syncStoredCounters();
+      }
+    }
+
+    syncStoredCounters();
+
+    window.addEventListener("focus", syncStoredCounters);
+    window.addEventListener("storage", handleStorage);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener("focus", syncStoredCounters);
+      window.removeEventListener("storage", handleStorage);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
   }, []);
 
   useEffect(() => {
@@ -243,6 +254,8 @@ export default function Home() {
         </div>
       </section>
 
+      <ToolFooter />
+
       {showResetConfirm && (
         <ResetConfirmDialog
           goalCount={summary.goals}
@@ -251,6 +264,29 @@ export default function Home() {
         />
       )}
     </main>
+  );
+}
+
+function ToolFooter() {
+  return (
+    <footer className="mx-auto max-w-[1080px] px-[1.6rem] pb-8 pt-1 text-[0.82rem] leading-[1.55] text-[var(--muted)] sm:pb-10">
+      <p>
+        Everything stays in your browser&apos;s local storage — no accounts, no
+        upload. MoneyForge saves your counters on this device only; reset clears
+        the stored goals from this browser.
+      </p>
+      <p className="mt-2">
+        A MoneyForge tool ·{" "}
+        <a
+          className="transition hover:text-[var(--red)]"
+          href={GITHUB_URL}
+          rel="noreferrer"
+          target="_blank"
+        >
+          open source
+        </a>
+      </p>
+    </footer>
   );
 }
 
@@ -889,6 +925,52 @@ function describeProgress(counter: Counter, stats: GoalStats) {
   )} left · ${
     stats.monthsLeft
   } ${stats.monthsLeft === 1 ? "month" : "months"}.`;
+}
+
+function readStoredCounters(): StoredCounters {
+  const saved = window.localStorage.getItem(STORAGE_KEY);
+
+  if (saved === null) {
+    return {
+      canPersist: false,
+      counters: [],
+      showExamplePrompt: true,
+    };
+  }
+
+  try {
+    const parsed = JSON.parse(saved);
+
+    if (!Array.isArray(parsed)) {
+      return {
+        canPersist: true,
+        counters: [],
+        showExamplePrompt: false,
+      };
+    }
+
+    const counters = parsed.map(normalizeCounter).filter(isCounter);
+
+    if (matchesExampleCounters(counters)) {
+      return {
+        canPersist: false,
+        counters: [],
+        showExamplePrompt: true,
+      };
+    }
+
+    return {
+      canPersist: true,
+      counters,
+      showExamplePrompt: false,
+    };
+  } catch {
+    return {
+      canPersist: true,
+      counters: [],
+      showExamplePrompt: false,
+    };
+  }
 }
 
 function normalizeCounter(counter: unknown): Counter | null {
