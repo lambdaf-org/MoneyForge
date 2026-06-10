@@ -1,4 +1,4 @@
-# Money Counter
+# MoneyForge
 
 > Track savings goals in your browser: set a target, log what you put in, see the percent done and how many months to go.
 
@@ -11,7 +11,7 @@ Money Counter is a single-page savings-goal tracker built with Next.js. Add a go
 ## Quickstart
 
 ```bash
-git clone https://github.com/lambdaf-org/money-counter.git
+git clone https://github.com/lambdaf-org/MoneyForge.git
 cd money-counter
 npm install
 npm run dev
