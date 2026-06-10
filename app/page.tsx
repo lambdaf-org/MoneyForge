@@ -1,9 +1,7 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-
-type Accent = "blue" | "pink" | "green" | "amber";
+import { type FormEvent, useEffect, useMemo, useState } from "react";
 
 type Counter = {
   id: string;
@@ -11,54 +9,43 @@ type Counter = {
   target: number;
   current: number;
   monthly: number;
-  accent: Accent;
 };
 
-const accents: Record<
-  Accent,
-  {
-    border: string;
-    text: string;
-    bar: string;
-    soft: string;
-  }
-> = {
-  blue: {
-    border: "border-blue-500/40",
-    text: "text-blue-300",
-    bar: "from-blue-400 to-emerald-400",
-    soft: "bg-blue-500/10 ring-blue-500/20 hover:bg-blue-500/20",
-  },
-  pink: {
-    border: "border-fuchsia-500/40",
-    text: "text-fuchsia-300",
-    bar: "from-violet-400 to-pink-400",
-    soft: "bg-fuchsia-500/10 ring-fuchsia-500/20 hover:bg-fuchsia-500/20",
-  },
-  green: {
-    border: "border-emerald-500/40",
-    text: "text-emerald-300",
-    bar: "from-emerald-400 to-teal-400",
-    soft: "bg-emerald-500/10 ring-emerald-500/20 hover:bg-emerald-500/20",
-  },
-  amber: {
-    border: "border-amber-500/40",
-    text: "text-amber-300",
-    bar: "from-amber-400 to-orange-400",
-    soft: "bg-amber-500/10 ring-amber-500/20 hover:bg-amber-500/20",
-  },
+type CounterInput = Omit<Counter, "id">;
+
+type GoalStats = {
+  completed: boolean;
+  etaLabel: string;
+  hasTarget: boolean;
+  monthsLeft: number | null;
+  percent: number;
+  remaining: number;
 };
 
-const accentCycle: Accent[] = ["blue", "pink", "green", "amber"];
+type GoalDraft = {
+  name: string;
+  target: string;
+  current: string;
+  monthly: string;
+};
 
-const defaultCounters: Counter[] = [
+const STORAGE_KEY = "MoneyForges-v3";
+const GITHUB_URL = "https://github.com/lambdaf-org/MoneyForge";
+
+const defaultDraft: GoalDraft = {
+  name: "",
+  target: "1000",
+  current: "0",
+  monthly: "100",
+};
+
+const exampleCounters: Counter[] = [
   {
     id: "freedom-fund",
     name: "Freedom Fund",
     target: 30000,
     current: 12400,
     monthly: 3000,
-    accent: "blue",
   },
   {
     id: "app-launch",
@@ -66,7 +53,6 @@ const defaultCounters: Counter[] = [
     target: 10000,
     current: 4800,
     monthly: 2600,
-    accent: "pink",
   },
   {
     id: "emergency-fund",
@@ -74,40 +60,104 @@ const defaultCounters: Counter[] = [
     target: 8000,
     current: 8000,
     monthly: 1000,
-    accent: "green",
   },
 ];
 
+const currencyFormatter = new Intl.NumberFormat("de-CH", {
+  currency: "CHF",
+  currencyDisplay: "code",
+  maximumFractionDigits: 0,
+  style: "currency",
+});
+
 export default function Home() {
-  const [counters, setCounters] = useState<Counter[]>(defaultCounters);
-  const [loaded, setLoaded] = useState(false);
+  const [counters, setCounters] = useState<Counter[]>([]);
+  const [canPersist, setCanPersist] = useState(false);
+  const [showExamplePrompt, setShowExamplePrompt] = useState(false);
+  const [showForm, setShowForm] = useState(false);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
 
   useEffect(() => {
-    const saved = localStorage.getItem("money-counters-v3");
+    const saved = window.localStorage.getItem(STORAGE_KEY);
 
-    if (saved) {
-      setCounters(JSON.parse(saved));
+    if (saved !== null) {
+      try {
+        const parsed = JSON.parse(saved);
+
+        if (Array.isArray(parsed)) {
+          const normalized = parsed.map(normalizeCounter).filter(isCounter);
+
+          if (matchesExampleCounters(normalized)) {
+            setCounters([]);
+            setShowExamplePrompt(true);
+          } else {
+            setCounters(normalized);
+            setCanPersist(true);
+          }
+        }
+      } catch {
+        setCounters([]);
+        setCanPersist(true);
+      }
+    } else {
+      setShowExamplePrompt(true);
     }
-
-    setLoaded(true);
   }, []);
 
   useEffect(() => {
-    if (!loaded) return;
-    localStorage.setItem("money-counters-v3", JSON.stringify(counters));
-  }, [counters, loaded]);
+    if (!canPersist) return;
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(counters));
+  }, [canPersist, counters]);
 
-  function addCounter() {
+  const summary = useMemo(() => {
+    const saved = counters.reduce(
+      (sum, counter) => sum + toFiniteNumber(counter.current),
+      0
+    );
+    const target = counters.reduce(
+      (sum, counter) => sum + toFiniteNumber(counter.target),
+      0
+    );
+    const done = counters.filter((counter) => getGoalStats(counter).completed)
+      .length;
+    const progress = target > 0 ? clamp((saved / target) * 100, 0, 100) : 0;
+    const remaining = target > 0 ? Math.max(target - saved, 0) : 0;
+
+    return {
+      done,
+      goals: counters.length,
+      progress,
+      remaining,
+      saved,
+      target,
+    };
+  }, [counters]);
+
+  function addCounter(input: CounterInput) {
     const newCounter: Counter = {
-      id: crypto.randomUUID(),
-      name: "New Counter",
-      target: 1000,
-      current: 0,
-      monthly: 100,
-      accent: accentCycle[counters.length % accentCycle.length],
+      ...input,
+      id: createId("goal"),
+      name: input.name.trim() || "New Counter",
     };
 
     setCounters((prev) => [newCounter, ...prev]);
+    setCanPersist(true);
+    setShowExamplePrompt(false);
+    setShowForm(false);
+  }
+
+  function startEmpty() {
+    setCounters([]);
+    setCanPersist(true);
+    setShowExamplePrompt(false);
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify([]));
+  }
+
+  function loadExamples() {
+    setCounters(exampleCounters);
+    setCanPersist(true);
+    setShowExamplePrompt(false);
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(exampleCounters));
   }
 
   function updateCounter(id: string, updates: Partial<Counter>) {
@@ -122,235 +172,592 @@ export default function Home() {
     setCounters((prev) => prev.filter((counter) => counter.id !== id));
   }
 
-  const summary = useMemo(() => {
-    const saved = counters.reduce((sum, counter) => sum + counter.current, 0);
-    const target = counters.reduce((sum, counter) => sum + counter.target, 0);
-    const done = counters.filter(
-      (counter) => counter.target > 0 && counter.current >= counter.target
-    ).length;
-
-    const progress = target > 0 ? Math.min((saved / target) * 100, 100) : 0;
-
-    return {
-      saved,
-      target,
-      done,
-      goals: counters.length,
-      progress,
-    };
-  }, [counters]);
+  function confirmReset() {
+    setCounters([]);
+    setCanPersist(false);
+    setShowExamplePrompt(true);
+    setShowForm(false);
+    setShowResetConfirm(false);
+    window.localStorage.removeItem(STORAGE_KEY);
+  }
 
   return (
-    <main className="min-h-screen bg-[#05060d] px-4 py-6 text-white sm:px-6 lg:px-8">
-      <section className="mx-auto max-w-7xl">
-        <div className="rounded-[2rem] border border-white/10 bg-[#101116] p-4 shadow-2xl sm:p-6 lg:p-8">
-          <header className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-            <div>
-              <p className="text-xs uppercase tracking-[0.35em] text-neutral-500">
-                My Counters
-              </p>
-              <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">
-                {counters.length} active goals
-              </h1>
-            </div>
+    <main className="min-h-screen bg-[var(--paper)] text-[var(--ink)]">
+      <AppHeader summary={summary} />
 
-            <button
-              onClick={addCounter}
-              className="w-full rounded-2xl border border-emerald-400/20 bg-emerald-500/10 px-5 py-3 text-base font-medium text-emerald-300 transition hover:bg-emerald-500/20 sm:w-auto"
-            >
-              + New Counter
-            </button>
-          </header>
+      <section className="mx-auto max-w-[1080px] px-[1.6rem] py-6 sm:py-8">
+        <WorkbenchHeader
+          goals={summary.goals}
+          onReset={() => setShowResetConfirm(true)}
+          onToggleForm={() => setShowForm((prev) => !prev)}
+          showForm={showForm}
+        />
+        <SummaryPanel summary={summary} />
 
-          <div className="mb-6 rounded-3xl border border-white/10 bg-white/[0.03] p-4 sm:p-5">
-            <div className="mb-3 flex items-center justify-between gap-3">
+        {showExamplePrompt && (
+          <ExamplePrompt
+            onLoadExamples={loadExamples}
+            onStartEmpty={startEmpty}
+          />
+        )}
+
+        {showForm && (
+          <div className="mt-6 border-y border-[var(--rule)] bg-[var(--paper-2)] px-4 py-5 sm:px-5">
+            <GoalForm onAdd={addCounter} onCancel={() => setShowForm(false)} />
+          </div>
+        )}
+
+        <div className="mt-7">
+          <section
+            id="counters"
+            aria-labelledby="counters-heading"
+          >
+            <div className="mb-4 flex items-end justify-between gap-4 border-b border-[var(--rule)] pb-3">
               <div>
-                <p className="text-xs uppercase tracking-[0.25em] text-neutral-500">
-                  Total Progress
-                </p>
-                <p className="mt-1 text-xl font-semibold sm:text-2xl">
-                  CHF {formatNumber(summary.saved)} / CHF{" "}
-                  {formatNumber(summary.target)}
-                </p>
+                <p className="kicker">Goals</p>
+                <h2 id="counters-heading" className="sr-only">
+                  Counters
+                </h2>
               </div>
-
-              <p className="text-2xl font-semibold text-emerald-300 sm:text-3xl">
-                {Math.round(summary.progress)}%
+              <p className="mono text-[0.68rem] uppercase tracking-[0.14em] text-[var(--meta)]">
+                {summary.goals} {summary.goals === 1 ? "goal" : "goals"}
               </p>
             </div>
 
-            <div className="h-3 overflow-hidden rounded-full bg-white/5">
-              <div
-                className="h-full rounded-full bg-gradient-to-r from-blue-400 via-fuchsia-400 to-emerald-400 transition-all"
-                style={{ width: `${summary.progress}%` }}
-              />
+            <div>
+              {counters.length > 0 ? (
+                counters.map((counter, index) => (
+                  <GoalRow
+                    key={counter.id}
+                    counter={counter}
+                    index={index}
+                    onDelete={deleteCounter}
+                    onUpdate={updateCounter}
+                  />
+                ))
+              ) : (
+                <EmptyState />
+              )}
             </div>
-          </div>
-
-          <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
-            {counters.map((counter) => (
-              <CounterCard
-                key={counter.id}
-                counter={counter}
-                onUpdate={updateCounter}
-                onDelete={deleteCounter}
-              />
-            ))}
-          </div>
-
-          <div className="mt-6 grid gap-3 sm:grid-cols-3">
-            <SummaryCard label="Saved" value={`CHF ${formatCompact(summary.saved)}`} />
-            <SummaryCard label="Goals" value={String(summary.goals)} />
-            <SummaryCard label="Done" value={String(summary.done)} />
-          </div>
+          </section>
         </div>
       </section>
+
+      {showResetConfirm && (
+        <ResetConfirmDialog
+          goalCount={summary.goals}
+          onCancel={() => setShowResetConfirm(false)}
+          onConfirm={confirmReset}
+        />
+      )}
     </main>
   );
 }
 
-function CounterCard({
+function AppHeader({
+  summary,
+}: {
+  summary: {
+    done: number;
+    goals: number;
+    progress: number;
+    remaining: number;
+    saved: number;
+    target: number;
+  };
+}) {
+  return (
+    <header className="sticky top-0 z-50 border-b border-[var(--rule)] bg-[rgba(250,246,238,0.92)] backdrop-blur">
+      <div className="mx-auto flex max-w-[1080px] items-center justify-between gap-3 px-4 py-3 sm:px-[1.6rem]">
+        <a
+          href="https://lambdaf.org/"
+          className="slab text-[1.05rem] font-bold tracking-[0.06em]"
+        >
+          LAMBDAFORGE
+        </a>
+
+        <nav
+          aria-label="Primary"
+          className="mono flex items-center gap-2 text-[0.66rem] uppercase tracking-[0.08em] text-[var(--muted)] sm:gap-6 sm:text-[0.72rem]"
+        >
+          <a
+            className="whitespace-nowrap transition hover:text-[var(--red)]"
+            href="#counters"
+          >
+            {Math.round(summary.progress)}%
+          </a>
+          <a
+            className="whitespace-nowrap border border-[var(--ink)] px-2.5 py-1.5 text-[var(--ink)] transition hover:bg-[var(--ink)] hover:text-[var(--paper)] sm:px-3"
+            href={GITHUB_URL}
+            rel="noreferrer"
+            target="_blank"
+          >
+            GitHub ↗
+          </a>
+        </nav>
+      </div>
+    </header>
+  );
+}
+
+function WorkbenchHeader({
+  goals,
+  onReset,
+  onToggleForm,
+  showForm,
+}: {
+  goals: number;
+  onReset: () => void;
+  onToggleForm: () => void;
+  showForm: boolean;
+}) {
+  return (
+    <div className="mb-5 grid gap-4 border-b-2 border-[var(--ink)] pb-4 sm:grid-cols-[1fr_auto] sm:items-end">
+      <div>
+        <p className="kicker">MoneyForge</p>
+        <h1 className="mt-2 text-[clamp(2rem,5vw,3.4rem)] leading-[1] tracking-[-0.02em]">
+          Counters
+        </h1>
+      </div>
+      <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+        <Tag>
+          {goals} {goals === 1 ? "GOAL" : "GOALS"}
+        </Tag>
+        <button
+          className="mono border border-[var(--red)] px-4 py-2 text-[0.74rem] uppercase tracking-[0.08em] text-[var(--red)] transition hover:bg-[var(--red)] hover:text-[var(--paper)]"
+          onClick={onReset}
+          type="button"
+        >
+          Reset
+        </button>
+        <button
+          className="mono border border-[var(--ink)] bg-[var(--ink)] px-4 py-2 text-[0.74rem] uppercase tracking-[0.08em] text-[var(--paper)] transition hover:border-[var(--red)] hover:bg-[var(--red)]"
+          onClick={onToggleForm}
+          type="button"
+        >
+          {showForm ? "Close" : "Add goal"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function SummaryPanel({
+  summary,
+}: {
+  summary: {
+    done: number;
+    goals: number;
+    progress: number;
+    remaining: number;
+    saved: number;
+    target: number;
+  };
+}) {
+  return (
+    <section
+      aria-labelledby="summary-heading"
+      className="border-b border-[var(--rule)] pb-4"
+    >
+      <h2 id="summary-heading" className="sr-only">
+        Summary
+      </h2>
+      <div className="grid grid-cols-2 border-y border-[var(--rule)] sm:grid-cols-5">
+        <SummaryMetric label="Saved" value={formatCurrency(summary.saved)} />
+        <SummaryMetric label="Target" value={formatCurrency(summary.target)} />
+        <SummaryMetric
+          label="Amount left"
+          value={formatCurrency(summary.remaining)}
+        />
+        <SummaryMetric label="Done" value={`${summary.done}`} />
+        <SummaryMetric
+          label="Progress"
+          value={`${Math.round(summary.progress)}%`}
+        />
+      </div>
+      <ProgressBar value={summary.progress} compact />
+    </section>
+  );
+}
+
+function SummaryMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="border-b border-[var(--rule)] py-3 pr-3 sm:border-b-0 sm:border-l sm:px-4 sm:first:border-l-0">
+      <p className="mono text-[0.66rem] uppercase tracking-[0.14em] text-[var(--meta)]">
+        {label}
+      </p>
+      <p className="slab mt-1 text-lg font-bold leading-tight [overflow-wrap:anywhere]">
+        {value}
+      </p>
+    </div>
+  );
+}
+
+function ExamplePrompt({
+  onLoadExamples,
+  onStartEmpty,
+}: {
+  onLoadExamples: () => void;
+  onStartEmpty: () => void;
+}) {
+  return (
+    <section className="mt-6 grid gap-4 border-y border-[var(--rule)] bg-[var(--paper-2)] px-4 py-5 sm:grid-cols-[1fr_auto] sm:items-center sm:px-5">
+      <div>
+        <p className="kicker">First run</p>
+        <h2 className="mt-2 text-2xl leading-tight">Start with examples?</h2>
+      </div>
+      <div className="flex flex-wrap gap-2 sm:justify-end">
+        <button
+          className="mono border border-[var(--ink)] bg-[var(--ink)] px-4 py-2 text-[0.74rem] uppercase tracking-[0.08em] text-[var(--paper)] transition hover:border-[var(--red)] hover:bg-[var(--red)]"
+          onClick={onStartEmpty}
+          type="button"
+        >
+          Start empty
+        </button>
+        <button
+          className="mono border border-[var(--rule-strong)] px-4 py-2 text-[0.74rem] uppercase tracking-[0.08em] text-[var(--ink)] transition hover:border-[var(--ink)] hover:bg-[var(--ink)] hover:text-[var(--paper)]"
+          onClick={onLoadExamples}
+          type="button"
+        >
+          Add examples
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function ResetConfirmDialog({
+  goalCount,
+  onCancel,
+  onConfirm,
+}: {
+  goalCount: number;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div
+      aria-labelledby="reset-dialog-title"
+      aria-modal="true"
+      className="fixed inset-0 z-[60] grid place-items-center bg-[rgba(28,28,28,0.28)] px-4"
+      role="dialog"
+    >
+      <div className="w-full max-w-[520px] border-2 border-[var(--ink)] bg-[var(--paper)] shadow-[8px_8px_0_var(--ink)]">
+        <div className="border-b border-[var(--rule)] px-5 py-4">
+          <p className="kicker">Reset</p>
+          <h2
+            id="reset-dialog-title"
+            className="mt-3 text-[clamp(1.7rem,4vw,2.4rem)] leading-none"
+          >
+            Clear all counters?
+          </h2>
+        </div>
+
+        <div className="px-5 py-5">
+          <p className="text-[1.05rem] leading-[1.5] text-[var(--ink-2)]">
+            This removes {goalCount} {goalCount === 1 ? "goal" : "goals"} from
+            this browser and clears the saved localStorage entry.
+          </p>
+          <p className="mono mt-4 border-l-2 border-[var(--red)] pl-3 text-[0.72rem] uppercase tracking-[0.1em] text-[var(--meta)]">
+            The action cannot be undone.
+          </p>
+        </div>
+
+        <div className="flex flex-col gap-2 border-t border-[var(--rule)] px-5 py-4 sm:flex-row sm:justify-end">
+          <button
+            className="mono border border-[var(--rule-strong)] px-4 py-3 text-[0.74rem] uppercase tracking-[0.08em] text-[var(--ink)] transition hover:border-[var(--ink)] hover:bg-[var(--ink)] hover:text-[var(--paper)]"
+            onClick={onCancel}
+            type="button"
+          >
+            Keep counters
+          </button>
+          <button
+            className="mono border border-[var(--red)] bg-[var(--red)] px-4 py-3 text-[0.74rem] uppercase tracking-[0.08em] text-[var(--paper)] transition hover:border-[var(--red-deep)] hover:bg-[var(--red-deep)]"
+            onClick={onConfirm}
+            type="button"
+          >
+            Reset
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function GoalForm({
+  onAdd,
+  onCancel,
+}: {
+  onAdd: (counter: CounterInput) => void;
+  onCancel: () => void;
+}) {
+  const [draft, setDraft] = useState<GoalDraft>(defaultDraft);
+
+  function updateDraft(field: keyof GoalDraft, value: string) {
+    setDraft((prev) => ({ ...prev, [field]: value }));
+  }
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    onAdd({
+      current: toFiniteNumber(draft.current),
+      monthly: toFiniteNumber(draft.monthly),
+      name: draft.name,
+      target: toFiniteNumber(draft.target),
+    });
+
+    setDraft(defaultDraft);
+  }
+
+  return (
+    <form
+      aria-labelledby="add-goal-heading"
+      className="grid gap-5 lg:grid-cols-[180px_1fr_auto] lg:items-end"
+      onSubmit={handleSubmit}
+    >
+      <div>
+        <p className="kicker">Add a goal</p>
+        <h2 id="add-goal-heading" className="mt-2 text-2xl leading-tight">
+          New counter
+        </h2>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <EditField
+          label="Name"
+          onChange={(value) => updateDraft("name", value)}
+          placeholder="New Counter"
+          type="text"
+          value={draft.name}
+        />
+        <EditField
+          label="Target amount"
+          onChange={(value) => updateDraft("target", value)}
+          value={draft.target}
+        />
+        <EditField
+          label="Current amount"
+          onChange={(value) => updateDraft("current", value)}
+          value={draft.current}
+        />
+        <EditField
+          label="Monthly contribution"
+          onChange={(value) => updateDraft("monthly", value)}
+          value={draft.monthly}
+        />
+      </div>
+
+      <div className="flex gap-2 lg:flex-col">
+        <button
+          className="mono flex-1 border border-[var(--ink)] bg-[var(--ink)] px-4 py-3 text-[0.74rem] uppercase tracking-[0.08em] text-[var(--paper)] transition hover:border-[var(--red)] hover:bg-[var(--red)]"
+          type="submit"
+        >
+          Add
+        </button>
+        <button
+          className="mono flex-1 border border-[var(--rule-strong)] px-4 py-3 text-[0.74rem] uppercase tracking-[0.08em] text-[var(--muted)] transition hover:border-[var(--ink)] hover:text-[var(--ink)]"
+          onClick={onCancel}
+          type="button"
+        >
+          Cancel
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function GoalRow({
   counter,
-  onUpdate,
+  index,
   onDelete,
+  onUpdate,
 }: {
   counter: Counter;
-  onUpdate: (id: string, updates: Partial<Counter>) => void;
+  index: number;
   onDelete: (id: string) => void;
+  onUpdate: (id: string, updates: Partial<Counter>) => void;
 }) {
   const [editing, setEditing] = useState(false);
-
-  const style = accents[counter.accent];
-
-  const progress =
-    counter.target > 0
-      ? Math.min((counter.current / counter.target) * 100, 100)
-      : 0;
-
-  const remaining = Math.max(counter.target - counter.current, 0);
-
-  const monthsLeft =
-    counter.monthly > 0 ? Math.ceil(remaining / counter.monthly) : null;
-
-  const completed = counter.target > 0 && counter.current >= counter.target;
+  const stats = getGoalStats(counter);
+  const goalName = counter.name.trim() || "Untitled goal";
 
   function addMoney(amount: number) {
     onUpdate(counter.id, {
-      current: Math.max(counter.current + amount, 0),
+      current: Math.max(toFiniteNumber(counter.current) + amount, 0),
     });
   }
 
   return (
-    <article
-      className={`rounded-[1.75rem] border ${style.border} bg-[#15161c] p-4 transition hover:-translate-y-0.5 hover:bg-[#181a21] sm:p-5`}
-    >
-      <div className="mb-4 flex items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          {editing ? (
-            <input
-              value={counter.name}
-              onChange={(e) => onUpdate(counter.id, { name: e.target.value })}
-              className="w-full bg-transparent text-xl font-semibold outline-none"
-              placeholder="Counter name"
-            />
-          ) : (
-            <h2 className="truncate text-xl font-semibold">{counter.name}</h2>
-          )}
+    <article className="group relative border-t border-[var(--rule)] px-1 py-6 transition hover:bg-[var(--red-tint)] sm:px-3">
+      <div
+        aria-hidden="true"
+        className="absolute bottom-[-1px] left-0 top-[-1px] w-0 bg-[var(--red)] transition-all group-hover:w-[3px]"
+      />
 
-          <p className="mt-1 text-sm text-neutral-500 sm:text-base">
-            CHF {formatNumber(counter.current)} / CHF{" "}
-            {formatNumber(counter.target)}
-          </p>
+      <div className="relative min-w-0 space-y-4">
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_8rem] lg:items-start">
+          <div className="flex min-w-0 gap-4">
+            <p className="slab shrink-0 text-[1.7rem] font-bold leading-none text-[var(--red)]">
+              {String(index + 1).padStart(2, "0")}
+            </p>
+            <div className="min-w-0">
+              {editing ? (
+                <input
+                  aria-label="Goal name"
+                  className="slab w-full border-b border-[var(--rule-strong)] bg-transparent pb-1 text-[clamp(1.45rem,3vw,2rem)] font-bold leading-tight text-[var(--ink)] outline-none transition focus:border-[var(--red)]"
+                  onChange={(event) =>
+                    onUpdate(counter.id, { name: event.target.value })
+                  }
+                  placeholder="Goal name"
+                  value={counter.name}
+                />
+              ) : (
+                <h3 className="text-[clamp(1.45rem,3vw,2rem)] leading-tight">
+                  {goalName}
+                </h3>
+              )}
+              <p className="mt-1 max-w-[64ch] text-[1rem] leading-[1.45] text-[var(--muted)]">
+                {describeProgress(counter, stats)}
+              </p>
+            </div>
+          </div>
+
+          <div className="border-l-2 border-[var(--red)] pl-3 lg:text-right">
+            <p className="mono text-[0.64rem] uppercase tracking-[0.14em] text-[var(--meta)]">
+              Progress
+            </p>
+            <p className="slab text-2xl font-bold leading-tight">
+              {Math.round(stats.percent)}%
+            </p>
+          </div>
         </div>
 
-        <p className={`text-xl font-semibold ${style.text}`}>
-          {Math.round(progress)}%
-        </p>
-      </div>
+        <ProgressBar value={stats.percent} compact />
 
-      <div className="mb-4 h-3 overflow-hidden rounded-full bg-white/5">
-        <div
-          className={`h-full rounded-full bg-gradient-to-r ${style.bar} transition-all`}
-          style={{ width: `${progress}%` }}
-        />
-      </div>
-
-      <div className="mb-4 flex items-center justify-between text-sm text-neutral-500">
-        <span>
-          {completed ? "Completed" : `Left: CHF ${formatNumber(remaining)}`}
-        </span>
-        <span>{completed ? "Ready" : `ETA: ${monthsLeft ?? "—"} mo`}</span>
-      </div>
-
-      <div className="mb-4 grid grid-cols-4 gap-2">
-        <QuickButton label="+100" onClick={() => addMoney(100)} className={style.soft} />
-        <QuickButton label="+500" onClick={() => addMoney(500)} className={style.soft} />
-        <QuickButton label="+1k" onClick={() => addMoney(1000)} className={style.soft} />
-        <QuickButton
-          label="-100"
-          onClick={() => addMoney(-100)}
-          className="bg-white/5 text-neutral-300 ring-white/10 hover:bg-white/10"
-        />
-      </div>
-
-      {editing && (
-        <div className="mb-4 grid gap-2 sm:grid-cols-3">
-          <EditField
-            label="Current"
-            value={counter.current}
-            onChange={(value) =>
-              onUpdate(counter.id, { current: Number(value) || 0 })
-            }
-          />
-          <EditField
-            label="Goal"
-            value={counter.target}
-            onChange={(value) =>
-              onUpdate(counter.id, { target: Number(value) || 0 })
-            }
-          />
-          <EditField
-            label="Monthly"
-            value={counter.monthly}
-            onChange={(value) =>
-              onUpdate(counter.id, { monthly: Number(value) || 0 })
-            }
-          />
+        <div className="grid border-y border-[var(--rule)] sm:grid-cols-2 lg:grid-cols-5">
+          <Metric label="Saved" value={formatCurrency(counter.current)} />
+          <Metric label="Target" value={formatCurrency(counter.target)} />
+          <Metric label="Amount left" value={formatCurrency(stats.remaining)} />
+          <Metric label="Monthly" value={formatCurrency(counter.monthly)} />
+          <Metric label="Months remaining" value={stats.etaLabel} />
         </div>
-      )}
 
-      <div className="flex gap-2">
-        <button
-          onClick={() => setEditing((prev) => !prev)}
-          className="flex-1 rounded-xl bg-white/5 px-3 py-2 text-sm font-medium text-neutral-200 ring-1 ring-white/10 transition hover:bg-white/10"
-        >
-          {editing ? "Done" : "Edit"}
-        </button>
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div className="flex flex-wrap gap-2">
+            <QuickButton label="+100" onClick={() => addMoney(100)} />
+            <QuickButton label="+500" onClick={() => addMoney(500)} />
+            <QuickButton label="+1000" onClick={() => addMoney(1000)} />
+            <QuickButton label="-100" muted onClick={() => addMoney(-100)} />
+          </div>
 
-        <button
-          onClick={() => onDelete(counter.id)}
-          className="rounded-xl bg-red-500/10 px-3 py-2 text-sm font-medium text-red-300 ring-1 ring-red-500/20 transition hover:bg-red-500/20"
-        >
-          Delete
-        </button>
+          <div className="flex flex-wrap gap-2">
+            <button
+              className="mono border border-[var(--ink)] px-4 py-2 text-[0.74rem] uppercase tracking-[0.06em] transition hover:bg-[var(--ink)] hover:text-[var(--paper)]"
+              onClick={() => setEditing((prev) => !prev)}
+              type="button"
+            >
+              {editing ? "Done" : "Edit"}
+            </button>
+            <button
+              className="mono border border-[var(--red)] px-4 py-2 text-[0.74rem] uppercase tracking-[0.06em] text-[var(--red)] transition hover:bg-[var(--red)] hover:text-[var(--paper)]"
+              onClick={() => onDelete(counter.id)}
+              type="button"
+            >
+              Delete
+            </button>
+          </div>
+        </div>
+
+        {editing && (
+          <div className="mt-5 border border-[var(--rule-strong)] bg-[var(--paper-2)] p-4">
+            <p className="mono text-[0.68rem] uppercase tracking-[0.16em] text-[var(--meta)]">
+              Edit values
+            </p>
+            <div className="mt-4 grid gap-3 sm:grid-cols-3">
+              <EditField
+                label="Current"
+                onChange={(value) =>
+                  onUpdate(counter.id, { current: toFiniteNumber(value) })
+                }
+                value={counter.current}
+              />
+              <EditField
+                label="Target"
+                onChange={(value) =>
+                  onUpdate(counter.id, { target: toFiniteNumber(value) })
+                }
+                value={counter.target}
+              />
+              <EditField
+                label="Monthly"
+                onChange={(value) =>
+                  onUpdate(counter.id, { monthly: toFiniteNumber(value) })
+                }
+                value={counter.monthly}
+              />
+            </div>
+          </div>
+        )}
       </div>
     </article>
   );
 }
 
+function Metric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="border-b border-[var(--rule)] py-3 pr-4 last:border-b-0">
+      <p className="mono text-[0.64rem] uppercase tracking-[0.14em] text-[var(--meta)]">
+        {label}
+      </p>
+      <p className="slab mt-1 text-lg font-bold leading-tight text-[var(--ink)] [overflow-wrap:anywhere]">
+        {value}
+      </p>
+    </div>
+  );
+}
+
+function ProgressBar({
+  compact = false,
+  value,
+}: {
+  compact?: boolean;
+  value: number;
+}) {
+  return (
+    <div
+      aria-label={`Progress ${Math.round(value)} percent`}
+      className={`h-2 border border-[var(--rule-strong)] bg-[var(--paper-2)] ${
+        compact ? "mt-3" : "mt-5"
+      }`}
+      role="img"
+    >
+      <div
+        className="h-full bg-[var(--red)] transition-all"
+        style={{ width: `${clamp(value, 0, 100)}%` }}
+      />
+    </div>
+  );
+}
+
 function QuickButton({
   label,
+  muted = false,
   onClick,
-  className,
 }: {
   label: string;
+  muted?: boolean;
   onClick: () => void;
-  className: string;
 }) {
   return (
     <button
+      className={`mono border px-3 py-2 text-[0.74rem] uppercase tracking-[0.06em] transition ${
+        muted
+          ? "border-[var(--rule-strong)] text-[var(--muted)] hover:border-[var(--ink)] hover:text-[var(--ink)]"
+          : "border-[var(--ink)] text-[var(--ink)] hover:bg-[var(--ink)] hover:text-[var(--paper)]"
+      }`}
       onClick={onClick}
-      className={`rounded-xl px-2 py-2 text-sm font-medium ring-1 transition ${className}`}
+      type="button"
     >
       {label}
     </button>
@@ -359,47 +766,186 @@ function QuickButton({
 
 function EditField({
   label,
-  value,
   onChange,
+  placeholder,
+  type = "number",
+  value,
 }: {
   label: string;
-  value: number;
   onChange: (value: string) => void;
+  placeholder?: string;
+  type?: "number" | "text";
+  value: number | string;
 }) {
   return (
-    <label className="block rounded-xl bg-white/[0.03] p-3 ring-1 ring-white/10">
-      <span className="text-[10px] uppercase tracking-[0.25em] text-neutral-500">
+    <label className="block">
+      <span className="mono text-[0.66rem] uppercase tracking-[0.14em] text-[var(--meta)]">
         {label}
       </span>
       <input
-        type="number"
+        className="mt-1 w-full border border-[var(--rule-strong)] bg-[var(--paper)] px-3 py-2 text-base text-[var(--ink)] outline-none transition placeholder:text-[var(--meta)] focus:border-[var(--red)]"
+        inputMode={type === "number" ? "decimal" : "text"}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        type={type}
         value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="mt-2 w-full bg-transparent text-sm text-white outline-none"
       />
     </label>
   );
 }
 
-function SummaryCard({ label, value }: { label: string; value: string }) {
+function Tag({ children }: { children: React.ReactNode }) {
   return (
-    <div className="rounded-2xl border border-white/5 bg-white/[0.03] px-5 py-4 text-center">
-      <p className="text-xs uppercase tracking-[0.3em] text-neutral-500">
-        {label}
+    <span className="mono border border-[var(--rule)] px-1.5 py-0.5 text-[0.68rem] leading-tight text-[var(--meta)]">
+      {children}
+    </span>
+  );
+}
+
+function EmptyState() {
+  return (
+    <div className="border-y border-[var(--rule)] py-10">
+      <p className="slab text-[2.1rem] font-bold leading-none text-[var(--red)]">
+        00
       </p>
-      <p className="mt-2 text-2xl font-semibold">{value}</p>
+      <h3 className="mt-3 text-2xl">No counters yet.</h3>
+      <p className="mt-2 max-w-[42ch] text-[var(--muted)]">
+        Use Add goal to create one. It will be written to localStorage in this
+        browser only.
+      </p>
     </div>
   );
 }
 
-function formatNumber(value: number) {
-  return new Intl.NumberFormat("de-CH").format(value);
-}
+function getGoalStats(counter: Counter): GoalStats {
+  const current = toFiniteNumber(counter.current);
+  const target = toFiniteNumber(counter.target);
+  const monthly = toFiniteNumber(counter.monthly);
+  const hasTarget = target > 0;
+  const completed = hasTarget && current >= target;
+  const remaining = hasTarget ? Math.max(target - current, 0) : 0;
+  const percent = hasTarget ? clamp((current / target) * 100, 0, 100) : 0;
 
-function formatCompact(value: number) {
-  if (value >= 1000) {
-    return `${(value / 1000).toFixed(1)}k`;
+  if (!hasTarget) {
+    return {
+      completed,
+      etaLabel: "Set target",
+      hasTarget,
+      monthsLeft: null,
+      percent,
+      remaining,
+    };
   }
 
-  return String(value);
+  if (completed) {
+    return {
+      completed,
+      etaLabel: "Complete",
+      hasTarget,
+      monthsLeft: 0,
+      percent,
+      remaining,
+    };
+  }
+
+  if (monthly <= 0) {
+    return {
+      completed,
+      etaLabel: "Add monthly",
+      hasTarget,
+      monthsLeft: null,
+      percent,
+      remaining,
+    };
+  }
+
+  const monthsLeft = Math.ceil(remaining / monthly);
+
+  return {
+    completed,
+    etaLabel: `${monthsLeft} mo`,
+    hasTarget,
+    monthsLeft,
+    percent,
+    remaining,
+  };
+}
+
+function describeProgress(counter: Counter, stats: GoalStats) {
+  if (!stats.hasTarget) {
+    return "Set a target above zero.";
+  }
+
+  if (stats.completed) {
+    return "Complete.";
+  }
+
+  if (stats.monthsLeft === null) {
+    return `${formatCurrency(counter.current)} saved · add monthly contribution.`;
+  }
+
+  return `${formatCurrency(counter.current)} saved · ${formatCurrency(
+    stats.remaining
+  )} left · ${
+    stats.monthsLeft
+  } ${stats.monthsLeft === 1 ? "month" : "months"}.`;
+}
+
+function normalizeCounter(counter: unknown): Counter | null {
+  if (!counter || typeof counter !== "object") {
+    return null;
+  }
+
+  const record = counter as Record<string, unknown>;
+
+  return {
+    current: toFiniteNumber(record.current),
+    id: typeof record.id === "string" ? record.id : createId("saved-goal"),
+    monthly: toFiniteNumber(record.monthly),
+    name: typeof record.name === "string" ? record.name : "New Counter",
+    target: toFiniteNumber(record.target),
+  };
+}
+
+function isCounter(counter: Counter | null): counter is Counter {
+  return counter !== null;
+}
+
+function matchesExampleCounters(counters: Counter[]) {
+  if (counters.length !== exampleCounters.length) {
+    return false;
+  }
+
+  return counters.every((counter, index) => {
+    const example = exampleCounters[index];
+
+    return (
+      counter.id === example.id &&
+      counter.name === example.name &&
+      counter.target === example.target &&
+      counter.current === example.current &&
+      counter.monthly === example.monthly
+    );
+  });
+}
+
+function createId(prefix: string) {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function toFiniteNumber(value: unknown) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : 0;
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function formatCurrency(value: number) {
+  return currencyFormatter.format(toFiniteNumber(value));
 }

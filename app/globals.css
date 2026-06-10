@@ -1,26 +1,111 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --paper: #faf6ee;
+  --paper-2: #f3ecdd;
+  --paper-3: #efe6d4;
+  --ink: #1c1c1c;
+  --ink-2: #34302a;
+  --muted: #5e5647;
+  --meta: #6b6353;
+  --rule: #ddd2bd;
+  --rule-strong: #c7b894;
+  --red: #b91f1f;
+  --red-deep: #9c1717;
+  --red-tint: rgba(185, 31, 31, 0.06);
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-background: var(--paper);
+  --color-foreground: var(--ink);
+  --font-sans: var(--font-spectral);
+  --font-serif: var(--font-spectral);
+  --font-mono: var(--font-ibm-plex-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--paper);
+  scroll-behavior: smooth;
+  scroll-padding-top: 4.5rem;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-spectral), Georgia, "Times New Roman", serif;
+  font-size: 17px;
+  line-height: 1.62;
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+h1,
+h2,
+h3 {
+  color: var(--ink);
+  font-family: var(--font-zilla-slab), Georgia, serif;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+
+::selection {
+  background: var(--red);
+  color: var(--paper);
+}
+
+:focus-visible {
+  outline: 2px solid var(--red);
+  outline-offset: 2px;
+}
+
+.slab {
+  font-family: var(--font-zilla-slab), Georgia, serif;
+}
+
+.mono {
+  font-family: var(--font-ibm-plex-mono), ui-monospace, SFMono-Regular, Menlo,
+    monospace;
+}
+
+.kicker {
+  align-items: center;
+  color: var(--red);
+  display: flex;
+  flex-wrap: wrap;
+  font-family: var(--font-ibm-plex-mono), ui-monospace, SFMono-Regular, Menlo,
+    monospace;
+  font-size: 0.7rem;
+  font-weight: 600;
+  gap: 0.35rem 0.6rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.kicker::before {
+  background: var(--red);
+  content: "";
+  flex: 0 0 1.6rem;
+  height: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
 }
