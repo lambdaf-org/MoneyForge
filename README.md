@@ -1,36 +1,52 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Money Counter
 
-## Getting Started
+> Track savings goals in your browser: set a target, log what you put in, see the percent done and how many months to go.
 
-First, run the development server:
+![Next.js](https://img.shields.io/badge/Next.js-16-black)
+![React](https://img.shields.io/badge/React-19-149eca)
+![Tailwind CSS](https://img.shields.io/badge/Tailwind%20CSS-4-38bdf8)
+
+Money Counter is a single-page savings-goal tracker built with Next.js. Add a goal with a name, target amount, current amount, and monthly contribution, then watch each card show its percent complete and an estimated months-to-go. Everything lives in your browser via localStorage. No backend, no accounts, no sign-up.
+
+## Quickstart
 
 ```bash
+git clone https://github.com/lambdaf-org/money-counter.git
+cd money-counter
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Features
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- **Goal cards** Each goal tracks a name, target, current amount, and monthly contribution.
+- **Live progress** Per-goal percent complete plus a bar, with a combined total across every goal.
+- **Months-to-go ETA** Estimated as remaining amount divided by your monthly contribution, rounded up.
+- **Quick edits** One-tap buttons add +100, +500, +1k or subtract -100 from a goal.
+- **Inline editing** Toggle Edit to set the current, goal, and monthly values directly on a card.
+- **At-a-glance summary** Totals for amount saved, number of goals, and goals finished.
+- **Color accents** Four accent themes cycle automatically as you add goals.
+- **Local persistence** Goals are saved to browser localStorage, so they stay between visits.
 
-## Learn More
+## How it works
 
-To learn more about Next.js, take a look at the following resources:
+The whole app is the client component in `app/page.tsx`. Goals are held in React state and mirrored to the `money-counters-v3` localStorage key on every change, then loaded back on the next visit. Amounts display in CHF using the `de-CH` number format. A goal counts as done once its current amount reaches its target.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Commands
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```bash
+npm run dev     # start the dev server at http://localhost:3000
+npm run build   # production build
+npm run start   # serve the production build
+npm run lint    # run ESLint
+```
 
-## Deploy on Vercel
+## Contributing
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Lambdaforge is open source and contributions are welcome. Start with the [contributor guide](https://github.com/lambdaf-org/contributing), and see the org-wide [CONTRIBUTING](https://github.com/lambdaf-org/.github/blob/main/CONTRIBUTING.md) and [Code of Conduct](https://github.com/lambdaf-org/.github/blob/main/CODE_OF_CONDUCT.md).
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## License
+
+This repository does not yet include a `LICENSE` file, so default copyright applies for now. A license is coming soon. If you want to use or build on this before then, please open an issue.
